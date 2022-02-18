@@ -2,9 +2,127 @@
 title: "PubH7462_HW3"
 author: "Mingming Pan"
 date: "2/16/2022"
-output: html_document
+output:
+  html_document:
+    df_print: paged
 ---
 
 ```{r set up, include=FALSE}
-
+library(tidyr)
+library(dplyr)
+library(gt)
+library(ggplot2)
+library(tidyverse)
+library(lubridate)
+library(ggridges)
+library(DataExplorer)
+library(stringr)
 ```
+
+```{r, message=FALSE}
+#read data
+instacart_df <- read_csv("./data/instacart.csv")
+```
+
+### 3.1 Please create a gt summary table which describes the overall mean, median, and sd of the number of days since last order, number of items purchased, number of aisles, number of departments, order number, and percent of items reordered; for all customers’ orders in these data. 
+```{r, message=FALSE}
+instacart_df %>%
+  group_by(order_id,user_id) %>%
+  summarise(
+    number_of_days_since_last_order = unique(days_since_prior_order),
+    number_of_items_purchased = n(),
+    number_of_aisles = n_distinct(aisle_id),
+    number_of_departments = n_distinct(department_id),
+    order_number = unique(order_number),
+    percent_of_items_reordered = mean(reordered)) %>%
+  ungroup()%>%
+  summarise(
+    across(
+      contains(c("number", "percent")),  
+      list(mean = mean, median = median, sd = sd),
+      na.rm=FALSE, 
+      .names = "{.col}__{.fn}")
+    )  %>%
+  pivot_longer(
+    cols=starts_with(
+      c("number_of_days_since_last_order",
+        "number_of_items_purchased",
+        "number_of_aisles",
+        "number_of_departments",
+        "order_number",
+        "percent_of_items_reordered")),
+    names_to = "term",
+    values_to = "value") %>%
+  separate(
+    col = term,
+    into = c("m","statistic"),
+    sep = "__") %>%
+  gt(rowname_col = "statistic", groupname_col = "m") %>%
+  fmt_number(columns = c("value"), decimals = 2) %>%
+  cols_align(align = c("center"), columns = everything()) %>%
+  tab_header(title = "Summary statistics of Instacart Online Data 2017") %>%
+  tab_source_note(source_note = "Data source: Instacart Data 2017") %>%
+  as_raw_html()
+```
+
+### 3.2 Create a visualization in ggplot 2 which displays the number of orders (of all products) per aisle, with aisles ordered in a meaningful way.
+```{r, fig.height=30}
+instacart_df %>% 
+  distinct(order_id,aisle)  %>%
+  group_by(aisle) %>%
+  summarise(N = n()) %>%
+  ggplot(aes(x = N, y = fct_reorder(aisle, N), fill = aisle)) +
+  geom_bar(stat = "identity") + 
+  theme(legend.position = "bottom") +
+  labs(
+    x = "Number of Orders",
+    y = "Aisle Name",
+    title = "The Number of Orders (of all products) in Every Aisle")
+```
+
+### 3.3 What are the top 6 aisles in the the top 6 departments by items purchased? Create a ggplot 2 visualization which displays this information, with departments and aisles ordered in a meaningful way. 
+```{r, fig.height=10, message=FALSE}
+Top6_department <- sort(table(instacart_df$department_id),decreasing=TRUE)[1:6]
+instacart_df %>% 
+  filter(department_id %in% c("4","16","19","7","1","13")) %>%
+  group_by(department, aisle) %>%
+  summarise(N = n()) %>%
+  arrange(department, desc(N)) %>%
+  group_by(department) %>%
+  slice(1:6) %>%
+  ggplot(aes(x = N, y = fct_reorder(aisle, N), fill = department)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~department, scales = "free_y", ncol = 1) +
+  theme(legend.position = "boottom") +
+  labs(
+    x = "Number of Items Purchased",
+    y = "Name of Aisles",
+    title = "The Top 6 Aisles in the Top 6 Departments by Items Purchased")
+```
+
+
+### 3.4 What are the top 5 aisles by items purchased and what are the top 5 items purchased in each of those aisles? Please display your answer in a single gt table.
+```{r, message=FALSE}
+Top5_aisle <- sort(table(instacart_df$aisle_id),decreasing=TRUE)[1:5]
+instacart_df %>% filter(aisle_id %in% c("83","24","123","120","21")) %>%
+  group_by(aisle, product_name) %>%
+  summarise(N = n()) %>%
+  arrange(aisle, desc(N)) %>%
+  group_by(aisle)  %>%
+  slice(1:5) %>%
+  rename(`# Items` = N,
+         `Product Name` = product_name) %>%
+  gt() %>%
+  tab_header("Top 5 Items Purchased in Top 5 Aisles") %>%
+  data_color(columns = `# Items`,
+             colors = scales::col_numeric(palette = c("white", "pink"),
+                                          domain  = c(0, 20000))) %>%
+  tab_footnote(
+    footnote = "Reviews extracted from Instacart 2007",
+    locations = cells_column_labels(columns = `# Items`)) %>%
+  as_raw_html()
+```
+
+
+
+
